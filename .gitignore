@@ -1,0 +1,53 @@
+# ============================================
+# Intel Quartus Prime + ModelSim/QuestaSim
+# ============================================
+
+# Quartus compilation database
+db/
+
+# Quartus incremental compilation database
+incremental_db/
+
+# Quartus output files (reports, SOF, POF, etc.)
+output_files/
+
+# Quartus workspace (user-specific UI state)
+*.qws
+
+# Quartus backup files
+*.bak
+*.qsf.bak
+
+# Quartus generated files
+*.rpt
+*.done
+*.smsg
+*.summary
+*.jdi
+*.pin
+*.sld
+*.hif
+c5_pin_model_dump.txt
+serv_req_info.txt
+
+# ============================================
+# ModelSim / QuestaSim
+# ============================================
+
+# Compiled simulation library
+work/
+
+# Simulation output
+simulation/
+
+# Waveform log files
+*.wlf
+
+# Transcript log
+transcript
+
+# ============================================
+# General
+# ============================================
+*.bak
+*~
