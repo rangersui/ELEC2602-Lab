@@ -18,6 +18,7 @@ module decoder_7seg(code, decoded_output);
 		2'b00 : begin decoded_output = 7'b0000111; end
 		2'b01 : begin decoded_output = 7'b1110000; end
 		2'b10 : begin decoded_output = 7'b0011100; end
+		
 		default : begin decoded_output = 7'b1100011; end
 	endcase
 	end
