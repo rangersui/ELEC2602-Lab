@@ -1,21 +1,17 @@
 // lab5_p3_instantiate.v
-// Board wrapper for DE1-SoC. Maps physical board pins to the logical
-// ports of lab5_p3 (4-bit pattern matcher).
+// Board wrapper for DE1-SoC.
 //
 // Pin mapping:
-//   CLOCK_50  -> clk      (50 MHz)
-//   KEY[0]    -> reset    (active-LOW; pressing KEY0 = reset)
-//   KEY[2]    -> pause    (active-LOW; press to TOGGLE — freezes/resumes FSM)
-//   KEY[3]    -> save     (active-LOW; pressing KEY3 = latch SW[9:6] as pattern)
-//   SW[1]     -> w        (input bit, shifted into the window each tick)
-//   SW[9:6]   -> n_in     (candidate 4-bit pattern, latched on save)
-//   HEX0      <- window   (current 4-bit window, as hex digit)
-//   HEX1      <- bit 0    (newest bit, just shifted in)
-//   HEX2      <- bit 1
-//   HEX3      <- bit 2
-//   HEX4      <- bit 3    (oldest bit, will fall off next tick)
-//   HEX5      <- pattern  (currently-saved pattern)
-//   LEDR      <- z        (all 10 LEDs on when window matches pattern)
+//   CLOCK_50  -> clk     (50 MHz)
+//   KEY[0]    -> reset   (active-LOW; pressing = reset)
+//   KEY[2]    -> pause   (active-LOW; press to TOGGLE freeze/resume)
+//   KEY[3]    -> save    (active-LOW; pressing = latch SW[9:6] as N)
+//   SW[1]     -> w       (input bit, sampled each tick)
+//   SW[9:6]   -> n_in    (candidate threshold N)
+//   HEX0      <- count   (current streak length)
+//   HEX5      <- saved N
+//   LEDR      <- z       (all 10 LEDs on when z=1)
+//   HEX1..HEX4 blanked
 module lab5_p3_instantiate(CLOCK_50, KEY, SW, HEX0, HEX1, HEX2, HEX3, HEX4, HEX5, LEDR);
 	input         CLOCK_50;
 	input  [3:0]  KEY;
@@ -26,11 +22,9 @@ module lab5_p3_instantiate(CLOCK_50, KEY, SW, HEX0, HEX1, HEX2, HEX3, HEX4, HEX5
 	wire reset_w        = ~KEY[0];
 	wire pause_pressed  = ~KEY[2];
 
-	// Edge-detect KEY[2] so each press toggles the paused state.
-	// (No debouncing — a clean button press should produce one rising edge.)
+	// Edge-detect KEY[2] so each press toggles paused.
 	reg pause_pressed_prev;
 	reg paused;
-
 	always @(posedge CLOCK_50) begin
 		if (reset_w) begin
 			pause_pressed_prev <= 1'b0;
@@ -44,21 +38,22 @@ module lab5_p3_instantiate(CLOCK_50, KEY, SW, HEX0, HEX1, HEX2, HEX3, HEX4, HEX5
 	end
 
 	lab5_p3 core (
-		.clk    (CLOCK_50),
-		.reset  (reset_w),
-		.w      (SW[1]),
-		.save   (~KEY[3]),
-		.pause  (paused),
-		.n_in   (SW[9:6]),
-		.hex0   (HEX0),
-		.hex1   (HEX1),
-		.hex2   (HEX2),
-		.hex3   (HEX3),
-		.hex4   (HEX4),
-		.hex5   (HEX5),
-		.ledr   (LEDR),
-		.z      (),
-		.count  (),
-		.n_out  ()
+		.clk         (CLOCK_50),
+		.reset       (reset_w),
+		.w           (SW[1]),
+		.n_in        (SW[9:6]),
+		.save        (~KEY[3]),
+		.pause       (paused),
+		.hex0        (HEX0),
+		.hex5        (HEX5),
+		.ledr        (LEDR),
+		.z           (),
+		.count       (),
+		.saved_n_out ()
 	);
+
+	assign HEX1 = 7'b1111111;
+	assign HEX2 = 7'b1111111;
+	assign HEX3 = 7'b1111111;
+	assign HEX4 = 7'b1111111;
 endmodule

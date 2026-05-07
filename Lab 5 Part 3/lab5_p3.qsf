@@ -46,7 +46,7 @@ set_global_assignment -name LAST_QUARTUS_VERSION "22.1std.0 Lite Edition"
 set_global_assignment -name VERILOG_FILE lab5_p3_instantiate.v
 set_global_assignment -name VERILOG_FILE lab5_p3.v
 set_global_assignment -name VERILOG_FILE lab5_p3_TB.v
-set_global_assignment -name VERILOG_FILE n_register.v
+set_global_assignment -name VERILOG_FILE save_register.v
 set_global_assignment -name VERILOG_FILE fsm.v
 set_global_assignment -name VERILOG_FILE fsm_next_state.v
 set_global_assignment -name VERILOG_FILE fsm_output.v

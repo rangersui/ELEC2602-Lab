@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lab 5 Part 3 — Pattern Matcher FSM</title>
+<style>
+	* { box-sizing: border-box; }
+	body {
+		font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+		max-width: 1200px;
+		margin: 30px auto;
+		padding: 20px;
+		color: #1a1a1a;
+		background: #fafafa;
+	}
+	h1 { margin-top: 0; color: #222; }
+	.info {
+		background: #fff;
+		padding: 14px 18px;
+		border-radius: 8px;
+		margin: 12px 0 18px;
+		border-left: 4px solid #2563eb;
+		line-height: 1.55;
+	}
+	code {
+		background: #f1f1f1;
+		padding: 2px 6px;
+		border-radius: 4px;
+		font-size: 0.9em;
+	}
+	.controls {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+		flex-wrap: wrap;
+		margin: 14px 0;
+		padding: 14px 18px;
+		background: #fff;
+		border-radius: 8px;
+	}
+	button {
+		font-family: inherit;
+		font-size: 15px;
+		padding: 9px 18px;
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		font-weight: 500;
+		transition: filter 0.1s;
+	}
+	button:hover { filter: brightness(1.1); }
+	button:active { filter: brightness(0.9); }
+	.btn-0 { background: #2563eb; color: white; }
+	.btn-1 { background: #dc2626; color: white; }
+	.btn-reset { background: #6b7280; color: white; }
+	.btn-rand { background: #059669; color: white; }
+	.status {
+		margin-left: auto;
+		font-size: 15px;
+		display: flex;
+		gap: 22px;
+	}
+	.status strong {
+		font-family: ui-monospace, "SF Mono", Consolas, monospace;
+		font-size: 17px;
+	}
+	.z-on { color: #059669; }
+	.z-off { color: #dc2626; }
+
+	svg {
+		background: white;
+		border-radius: 8px;
+		display: block;
+		margin: 0 auto;
+	}
+
+	.node-circle {
+		fill: white;
+		stroke: #888;
+		stroke-width: 2;
+		cursor: pointer;
+		transition: fill 0.2s, stroke 0.2s;
+	}
+	.node-circle:hover { fill: #f0f0f0; }
+	.node-circle.pattern {
+		fill: #d1fae5;
+		stroke: #059669;
+		stroke-width: 3;
+	}
+	.node-circle.current {
+		stroke: #f59e0b;
+		stroke-width: 5;
+	}
+	.node-circle.both {
+		fill: #d1fae5;
+		stroke: #f59e0b;
+		stroke-width: 5;
+	}
+	.node-text {
+		font-family: ui-monospace, "SF Mono", Consolas, monospace;
+		font-size: 15px;
+		font-weight: 600;
+		pointer-events: none;
+		fill: #333;
+	}
+	.node-text.pattern { fill: #064e3b; }
+
+	.edge-bg {
+		fill: none;
+		stroke: #e5e5e5;
+		stroke-width: 1;
+		opacity: 0.4;
+	}
+	.edge-active-0 {
+		fill: none;
+		stroke: #2563eb;
+		stroke-width: 3;
+	}
+	.edge-active-1 {
+		fill: none;
+		stroke: #dc2626;
+		stroke-width: 3;
+	}
+	.edge-label {
+		font-family: ui-monospace, monospace;
+		font-size: 13px;
+		font-weight: 600;
+		pointer-events: none;
+	}
+
+	.legend {
+		display: flex;
+		gap: 24px;
+		flex-wrap: wrap;
+		padding: 12px 18px;
+		background: #fff;
+		border-radius: 8px;
+		margin: 12px 0;
+		font-size: 14px;
+	}
+	.legend-item { display: flex; align-items: center; gap: 8px; }
+	.swatch-line {
+		display: inline-block;
+		width: 24px;
+		height: 4px;
+		border-radius: 2px;
+	}
+	.swatch-circle {
+		display: inline-block;
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+	}
+
+	.history {
+		margin: 12px 0;
+		padding: 14px 18px;
+		background: #fff;
+		border-radius: 8px;
+		font-size: 14px;
+	}
+	.history-bits {
+		font-family: ui-monospace, monospace;
+		font-size: 17px;
+		letter-spacing: 4px;
+	}
+
+	footer {
+		margin-top: 30px;
+		padding-top: 20px;
+		border-top: 1px solid #ddd;
+		font-size: 13px;
+		color: #666;
+	}
+</style>
+</head>
+<body>
+
+<h1>Lab 5 Part 3 — Pattern Matcher FSM</h1>
+
+<div class="info">
+	<strong>State</strong> = the last 4 bits seen (a sliding window).<br>
+	<strong>Transition</strong>: <code>next_state = {current_state[2:0], w}</code> — shift left, append <code>w</code> as new LSB.<br>
+	<strong>Output</strong>: <code>z = (state == pattern)</code> — fires when the window matches the saved pattern.<br>
+	<em>16 states, 32 edges. Click any node to set it as the pattern. Press 0 / 1 to feed an input bit.</em>
+</div>
+
+<div class="controls">
+	<button class="btn-0" onclick="step(0)">Feed 0</button>
+	<button class="btn-1" onclick="step(1)">Feed 1</button>
+	<button class="btn-rand" onclick="randomBits(8)">Feed 8 random bits</button>
+	<button class="btn-reset" onclick="resetState()">Reset to 0000</button>
+	<div class="status">
+		<span>Current: <strong id="current">0000</strong></span>
+		<span>Pattern: <strong id="pattern">1011</strong></span>
+		<span>z = <strong id="z-out" class="z-off">0</strong></span>
+	</div>
+</div>
+
+<div class="legend">
+	<div class="legend-item"><span class="swatch-line" style="background:#2563eb"></span>w=0 (active edge from current state)</div>
+	<div class="legend-item"><span class="swatch-line" style="background:#dc2626"></span>w=1 (active edge from current state)</div>
+	<div class="legend-item"><span class="swatch-line" style="background:#e5e5e5"></span>Other transitions (faded)</div>
+	<div class="legend-item"><span class="swatch-circle" style="background:#d1fae5; border:2px solid #059669;"></span>Matching pattern (z=1 here)</div>
+	<div class="legend-item"><span class="swatch-circle" style="background:white; border:4px solid #f59e0b;"></span>Current state</div>
+</div>
+
+<svg id="fsm" width="1100" height="720" viewBox="0 0 1100 720"></svg>
+
+<div class="history">
+	Recent inputs: <span class="history-bits" id="history">—</span>
+</div>
+
+<footer>
+	Each node has exactly two outgoing edges — one for <code>w=0</code> (gray/blue) and one for <code>w=1</code> (gray/red). The two self-loops are at <code>0000 →w=0→ 0000</code> (top-left) and <code>1111 →w=1→ 1111</code> (bottom-right). When the current state's outgoing edges hit a node, you can see exactly where the next bit will take you.
+</footer>
+
+<script>
+const NODE_R = 32;
+const COLS = 4;
+const ROWS = 4;
+const CELL_W = 240;
+const CELL_H = 165;
+const X_OFFSET = 70;
+const Y_OFFSET = 50;
+
+let currentState = 0;
+let pattern = 0b1011;
+let history = [];
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function nodePos(value) {
+	const row = (value >> 2) & 3;
+	const col = value & 3;
+	return {
+		x: X_OFFSET + col * CELL_W + NODE_R,
+		y: Y_OFFSET + row * CELL_H + NODE_R
+	};
+}
+
+function bin4(v) { return v.toString(2).padStart(4, '0'); }
+
+function nextState(state, w) {
+	return ((state << 1) | w) & 0xF;
+}
+
+function makeEl(name, attrs = {}) {
+	const el = document.createElementNS(SVG_NS, name);
+	for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+	return el;
+}
+
+function drawSelfLoop(svg, pos, cls, label) {
+	// loop arc above the node
+	const r = 22;
+	const cx1 = pos.x - 12;
+	const cy1 = pos.y - NODE_R;
+	const cx2 = pos.x + 12;
+	const cy2 = pos.y - NODE_R;
+	const path = makeEl('path', {
+		d: `M ${cx1} ${cy1} C ${pos.x - 40} ${pos.y - NODE_R - 50}, ${pos.x + 40} ${pos.y - NODE_R - 50}, ${cx2} ${cy2}`,
+		class: cls
+	});
+	svg.appendChild(path);
+	if (label) {
+		const text = makeEl('text', {
+			x: pos.x,
+			y: pos.y - NODE_R - 38,
+			'text-anchor': 'middle',
+			class: 'edge-label',
+			fill: cls.includes('-1') ? '#dc2626' : (cls.includes('-0') ? '#2563eb' : '#888')
+		});
+		text.textContent = label;
+		svg.appendChild(text);
+	}
+}
+
+function drawEdge(svg, from, to, cls, label, curveSign = 1) {
+	if (from.x === to.x && from.y === to.y) return; // handled separately
+	const dx = to.x - from.x;
+	const dy = to.y - from.y;
+	const dist = Math.sqrt(dx * dx + dy * dy);
+	const ux = dx / dist;
+	const uy = dy / dist;
+
+	const startX = from.x + ux * NODE_R;
+	const startY = from.y + uy * NODE_R;
+	const endX = to.x - ux * NODE_R;
+	const endY = to.y - uy * NODE_R;
+
+	// Curve perpendicular to the straight edge to disambiguate parallel edges
+	const curveAmount = 18 * curveSign;
+	const midX = (startX + endX) / 2 + uy * curveAmount;
+	const midY = (startY + endY) / 2 - ux * curveAmount;
+
+	const path = makeEl('path', {
+		d: `M ${startX} ${startY} Q ${midX} ${midY} ${endX} ${endY}`,
+		class: cls
+	});
+	svg.appendChild(path);
+
+	if (label) {
+		const text = makeEl('text', {
+			x: midX,
+			y: midY,
+			'text-anchor': 'middle',
+			'dominant-baseline': 'middle',
+			class: 'edge-label',
+			fill: cls.includes('-1') ? '#dc2626' : '#2563eb'
+		});
+		text.textContent = label;
+		// Add white halo for readability
+		const halo = makeEl('text', {
+			x: midX,
+			y: midY,
+			'text-anchor': 'middle',
+			'dominant-baseline': 'middle',
+			class: 'edge-label',
+			fill: 'white',
+			'stroke': 'white',
+			'stroke-width': 4
+		});
+		halo.textContent = label;
+		svg.appendChild(halo);
+		svg.appendChild(text);
+	}
+}
+
+function render() {
+	const svg = document.getElementById('fsm');
+	svg.innerHTML = '';
+
+	// 1) Draw all background edges (faded)
+	for (let v = 0; v < 16; v++) {
+		const fromPos = nodePos(v);
+		for (const w of [0, 1]) {
+			const to = nextState(v, w);
+			if (v === currentState) continue; // skip current state's edges; drawn last for emphasis
+			if (v === to) {
+				drawSelfLoop(svg, fromPos, 'edge-bg', null);
+			} else {
+				const toPos = nodePos(to);
+				drawEdge(svg, fromPos, toPos, 'edge-bg', null, w === 0 ? 1 : -1);
+			}
+		}
+	}
+
+	// 2) Draw active edges from current state on top
+	{
+		const fromPos = nodePos(currentState);
+		for (const w of [0, 1]) {
+			const to = nextState(currentState, w);
+			const cls = w === 0 ? 'edge-active-0' : 'edge-active-1';
+			if (currentState === to) {
+				drawSelfLoop(svg, fromPos, cls, `w=${w}`);
+			} else {
+				const toPos = nodePos(to);
+				drawEdge(svg, fromPos, toPos, cls, `w=${w}`, w === 0 ? 1 : -1);
+			}
+		}
+	}
+
+	// 3) Draw nodes on top
+	for (let v = 0; v < 16; v++) {
+		const pos = nodePos(v);
+		const g = makeEl('g', { transform: `translate(${pos.x}, ${pos.y})` });
+		g.style.cursor = 'pointer';
+		g.addEventListener('click', () => {
+			pattern = v;
+			render();
+			updateStatus();
+		});
+
+		let cls = 'node-circle';
+		if (v === pattern && v === currentState) cls += ' both';
+		else if (v === pattern) cls += ' pattern';
+		else if (v === currentState) cls += ' current';
+
+		g.appendChild(makeEl('circle', { r: NODE_R, class: cls }));
+		const text = makeEl('text', {
+			'text-anchor': 'middle',
+			dy: 6,
+			class: 'node-text' + (v === pattern ? ' pattern' : '')
+		});
+		text.textContent = bin4(v);
+		g.appendChild(text);
+		svg.appendChild(g);
+	}
+}
+
+function updateStatus() {
+	document.getElementById('current').textContent = bin4(currentState);
+	document.getElementById('pattern').textContent = bin4(pattern);
+	const z = currentState === pattern ? 1 : 0;
+	const zEl = document.getElementById('z-out');
+	zEl.textContent = z;
+	zEl.className = z ? 'z-on' : 'z-off';
+	const histEl = document.getElementById('history');
+	histEl.textContent = history.length === 0 ? '—' : history.slice(-20).join(' ');
+}
+
+function step(w) {
+	currentState = nextState(currentState, w);
+	history.push(w);
+	render();
+	updateStatus();
+}
+
+function randomBits(n) {
+	for (let i = 0; i < n; i++) {
+		step(Math.random() < 0.5 ? 0 : 1);
+	}
+}
+
+function resetState() {
+	currentState = 0;
+	history = [];
+	render();
+	updateStatus();
+}
+
+// Keyboard shortcuts: 0 / 1 / r
+document.addEventListener('keydown', (e) => {
+	if (e.key === '0') step(0);
+	else if (e.key === '1') step(1);
+	else if (e.key === 'r' || e.key === 'R') resetState();
+});
+
+render();
+updateStatus();
+</script>
+
+</body>
+</html>

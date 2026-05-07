@@ -1,54 +1,45 @@
-// Connector for the pattern-matching FSM.
-//
-//          +-----------------+
-//    w --->| fsm_next_state  |---next_state-->+
-//          +-----------------+                |
-//                                             v
-//                                    +-----------------+
-//   reset, enable, clk -------------> | fsm_state_reg   |---current_state-->
-//                                    +-----------------+                  |
-//                                             ^                           |
-//                                             +--------loop back----------+
-//                                                                         |
-//                                             +----+                      |
-//                                             |    v                      |
-//                                    +-----------------+                  |
-//   pattern --------------------------> | fsm_output    |<-----------------+
-//                                    +-----------------+
-//                                             |
-//                                             v
-//                                             z
-module fsm(clk, reset, enable, w, pattern, z, state);
+// Connector for the streak-counting FSM.
+// Wires next_state -> state_reg -> output_logic. Internally the state
+// register holds count + last_w (the most recent bit seen, used to detect
+// when the streak breaks). Externally the FSM only exposes count and z —
+// last_w is plumbing.
+module fsm(clk, reset, enable, w, n, z, count);
 	input        clk;
 	input        reset;
 	input        enable;
 	input        w;
-	input  [3:0] pattern;
+	input  [3:0] n;
 	output       z;
-	output [3:0] state;
+	output [3:0] count;
 
-	wire [3:0] next_state;
-	wire [3:0] current_state;
+	wire [3:0] next_count;
+	wire       next_last_w;
+	wire [3:0] current_count;
+	wire       last_w;
 
 	fsm_next_state ns_logic (
-		.current_state (current_state),
+		.current_count (current_count),
+		.last_w        (last_w),
 		.w             (w),
-		.next_state    (next_state)
+		.next_count    (next_count),
+		.next_last_w   (next_last_w)
 	);
 
 	fsm_state_reg state_register (
 		.clk           (clk),
 		.reset         (reset),
 		.enable        (enable),
-		.next_state    (next_state),
-		.current_state (current_state)
+		.next_count    (next_count),
+		.next_last_w   (next_last_w),
+		.current_count (current_count),
+		.last_w        (last_w)
 	);
 
 	fsm_output out_logic (
-		.current_state (current_state),
-		.pattern       (pattern),
+		.current_count (current_count),
+		.n             (n),
 		.z             (z)
 	);
 
-	assign state = current_state;
+	assign count = current_count;
 endmodule
