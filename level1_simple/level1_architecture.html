@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Level 1 CPU — Architecture &amp; FSM</title>
+<style>
+	* { box-sizing: border-box; }
+	body {
+		font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+		max-width: 1500px;
+		margin: 30px auto;
+		padding: 20px;
+		color: #1a1a1a;
+		background: #fafafa;
+		line-height: 1.55;
+	}
+	h1 { color: #222; margin-top: 0; }
+	h2 { color: #1e40af; border-bottom: 2px solid #dbeafe; padding-bottom: 6px; margin-top: 36px; }
+	h3 { color: #1e3a8a; margin-top: 22px; }
+	code {
+		background: #eef2ff;
+		padding: 2px 6px;
+		border-radius: 4px;
+		font-size: 0.9em;
+		font-family: ui-monospace, "SF Mono", Consolas, monospace;
+	}
+	.box {
+		background: white;
+		border-radius: 10px;
+		padding: 16px 22px;
+		margin: 14px 0;
+		box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+	}
+	.note {
+		background: #fefce8;
+		border-left: 4px solid #ca8a04;
+		padding: 10px 16px;
+		border-radius: 6px;
+		font-size: 14px;
+	}
+	table {
+		border-collapse: collapse;
+		width: 100%;
+		font-size: 14px;
+		margin: 8px 0;
+	}
+	th, td {
+		padding: 8px 12px;
+		text-align: left;
+		border-bottom: 1px solid #e5e7eb;
+	}
+	th { background: #f3f4f6; font-weight: 600; }
+	tr:hover { background: #f9fafb; }
+	td code { background: #f3f4f6; }
+
+	.controls {
+		display: flex;
+		gap: 10px;
+		flex-wrap: wrap;
+		margin: 14px 0;
+	}
+	button {
+		font-family: inherit;
+		font-size: 14px;
+		padding: 9px 16px;
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		font-weight: 500;
+		background: #4b5563;
+		color: white;
+		transition: filter 0.1s;
+	}
+	button:hover { filter: brightness(1.15); }
+	button.active {
+		background: #2563eb;
+		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
+	}
+	.step-label {
+		font-family: ui-monospace, monospace;
+		font-size: 13px;
+		color: #6b7280;
+		font-weight: 600;
+		margin-right: 6px;
+	}
+
+	svg { display: block; margin: 0 auto; background: white; border-radius: 10px; }
+
+	/* SVG element classes */
+	.bus-bar { fill: #1f2937; }
+	.bus-text { fill: white; font-family: ui-monospace, monospace; font-weight: 700; font-size: 16px; }
+	.reg-box { fill: white; stroke: #1f2937; stroke-width: 2; }
+	.reg-text { fill: #1f2937; font-family: ui-monospace, monospace; font-weight: 700; font-size: 14px; }
+	.tri-buf { fill: white; stroke: #1f2937; stroke-width: 1.5; }
+	.alu-box { fill: #fef3c7; stroke: #d97706; stroke-width: 2.5; }
+	.alu-text { fill: #78350f; font-family: ui-monospace, monospace; font-weight: 700; font-size: 16px; }
+	.wire { stroke: #6b7280; stroke-width: 1.5; fill: none; }
+	.wire-active { stroke: #dc2626; stroke-width: 3; fill: none; }
+	.wire-bus { stroke: #1f2937; stroke-width: 2.5; fill: none; }
+	.ctrl-line { stroke: #94a3b8; stroke-width: 1; stroke-dasharray: 3 2; fill: none; }
+	.ctrl-line-active { stroke: #dc2626; stroke-width: 2; fill: none; }
+	.ctrl-label { font-family: ui-monospace, monospace; font-size: 10px; fill: #6b7280; }
+	.ctrl-label.active { fill: #dc2626; font-weight: 700; }
+	.controller-bar { fill: #1f2937; }
+	.controller-text { fill: white; font-family: ui-monospace, monospace; font-weight: 700; font-size: 15px; }
+	.arrow-head { fill: #6b7280; }
+	.arrow-head-active { fill: #dc2626; }
+
+	/* FSM diagram */
+	.fsm-state { fill: white; stroke: #1f2937; stroke-width: 2; }
+	.fsm-state.active { fill: #fed7aa; stroke: #ea580c; stroke-width: 3; }
+	.fsm-text { font-family: ui-monospace, monospace; font-weight: 700; font-size: 14px; fill: #1f2937; pointer-events: none; }
+	.fsm-edge { fill: none; stroke: #6b7280; stroke-width: 1.5; }
+	.fsm-edge.active { stroke: #dc2626; stroke-width: 2.5; }
+	.fsm-edge-text { font-family: ui-monospace, monospace; font-size: 12px; fill: #4b5563; }
+
+	.legend {
+		display: flex;
+		gap: 18px;
+		flex-wrap: wrap;
+		font-size: 13px;
+		padding: 12px 16px;
+		background: #f9fafb;
+		border-radius: 8px;
+		margin: 12px 0;
+	}
+	.legend-item { display: flex; align-items: center; gap: 6px; }
+	.swatch { display: inline-block; width: 16px; height: 4px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Level 1 CPU — Architecture &amp; FSM Walkthrough</h1>
+
+<div class="box">
+	<p>This is a multi-cycle, single-bus, 16-bit micro-architecture. All data movement happens over one shared 16-bit bus. Every cycle, the <strong>controller</strong> asserts exactly one source onto the bus (via tri-state) and zero or more destinations latch from it. Multi-operand operations (ADD, SUB) need multiple cycles because the bus can only carry one value at a time.</p>
+</div>
+
+<h2>Module hierarchy</h2>
+
+<div class="box">
+<pre style="margin: 0; font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.6;">
+cpu_level1_TB             ← drives test instructions, checks register state
+└── cpu_level1            ← top: wires all the units to the shared bus
+    ├── register_file     ← 8x R0..R7, each with its own tri-state buffer
+    │   └── register × 8       parameterized 16-bit reg (enable + sync reset)
+    ├── register          ← A   (operand 1 for ALU, written from bus)
+    ├── alu                  ← combinational: ADD or SUB on A and bus
+    ├── register          ← G   (latches ALU result, drives bus via G_tri)
+    ├── register          ← Status (latches Z/N flags from ALU)
+    └── controller        ← FSM: decodes opcode, sequences T-states, drives all
+                              reg_en[7:0], reg_tri[7:0], A_en, G_en, status_en,
+                              g_tri, imm_tri, alu_op, done
+</pre>
+</div>
+
+<h2>Datapath diagram</h2>
+
+<p>Pick an instruction below to see which control signals fire and which wires carry data in each T-state.</p>
+
+<div class="controls">
+	<span class="step-label">Show:</span>
+	<button class="instr-btn" data-op="idle">— Idle —</button>
+	<button class="instr-btn" data-op="ldi-t0">LDI Rd, K — T0</button>
+	<button class="instr-btn" data-op="mov-t0">MOV Rd, Rs — T0</button>
+	<button class="instr-btn" data-op="add-t0">ADD Rd, Rs — T0</button>
+	<button class="instr-btn" data-op="add-t1">ADD Rd, Rs — T1</button>
+	<button class="instr-btn" data-op="add-t2">ADD Rd, Rs — T2</button>
+</div>
+
+<svg id="datapath" width="1450" height="620" viewBox="0 0 1450 620"></svg>
+
+<div class="legend">
+	<div class="legend-item"><span class="swatch" style="background:#1f2937"></span>Shared bus (16-bit)</div>
+	<div class="legend-item"><span class="swatch" style="background:#6b7280"></span>Data wire (inactive)</div>
+	<div class="legend-item"><span class="swatch" style="background:#dc2626"></span>Wire / signal active this cycle</div>
+	<div class="legend-item"><span class="swatch" style="background:#94a3b8; border-top:1px dashed #94a3b8;"></span>Control line from controller</div>
+</div>
+
+<h2>Controller FSM</h2>
+
+<p>The controller is a simple step-counter FSM. <code>step</code> goes from 0 → 1 → 2, but the controller asserts <code>done</code> and resets <code>step</code> to 0 once the current opcode's last cycle is reached. So a 1-cycle instruction (LDI, MOV) just stays at T0; a 3-cycle instruction (ADD, SUB) walks T0 → T1 → T2.</p>
+
+<svg id="fsm" width="800" height="280" viewBox="0 0 800 280"></svg>
+
+<h2>What happens in each T-state</h2>
+
+<table>
+	<thead>
+		<tr>
+			<th>Instruction</th>
+			<th>T0</th>
+			<th>T1</th>
+			<th>T2</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr>
+			<td><code>LDI Rd, K</code></td>
+			<td><code>imm_tri=1</code>, <code>reg_en[Rd]=1</code> → Rd ← sign_ext(K)</td>
+			<td>—</td>
+			<td>—</td>
+		</tr>
+		<tr>
+			<td><code>MOV Rd, Rs</code></td>
+			<td><code>reg_tri[Rs]=1</code>, <code>reg_en[Rd]=1</code> → Rd ← Rs</td>
+			<td>—</td>
+			<td>—</td>
+		</tr>
+		<tr>
+			<td><code>ADD Rd, Rs</code></td>
+			<td><code>reg_tri[Rd]=1</code>, <code>A_en=1</code> → A ← Rd</td>
+			<td><code>reg_tri[Rs]=1</code>, <code>alu_op=ADD</code>, <code>G_en=1</code>, <code>status_en=1</code> → G ← A + Rs</td>
+			<td><code>g_tri=1</code>, <code>reg_en[Rd]=1</code> → Rd ← G</td>
+		</tr>
+		<tr>
+			<td><code>SUB Rd, Rs</code></td>
+			<td>same as ADD: A ← Rd</td>
+			<td>same shape, <code>alu_op=SUB</code> → G ← A − Rs</td>
+			<td>same: Rd ← G</td>
+		</tr>
+	</tbody>
+</table>
+
+<div class="note">
+	<strong>Why does ADD take 3 cycles?</strong> The ALU needs two operands (A and bus), but the bus can only deliver one value per cycle. So T0 grabs Rd into A, T1 puts Rs on the bus and the ALU adds (A + bus = Rd + Rs), T2 routes G back through the bus into Rd. Each T-state asserts a unique driver onto the bus.
+</div>
+
+<h2>Instruction encoding</h2>
+
+<div class="box">
+<pre style="margin: 0; font-family: ui-monospace, monospace; font-size: 14px;">
+LDI:        [op 4][Rd 3][imm 9]
+MOV/ADD/SUB:[op 4][Rd 3][Rs 3][unused 6]
+
+opcodes:
+  0001 LDI   Rd, K9        Rd ← sign_ext(K9)
+  0010 MOV   Rd, Rs        Rd ← Rs
+  0011 ADD   Rd, Rs        Rd ← Rd + Rs
+  0100 SUB   Rd, Rs        Rd ← Rd − Rs
+</pre>
+</div>
+
+<h2>Files</h2>
+
+<table>
+	<thead><tr><th>File</th><th>Role</th></tr></thead>
+	<tbody>
+		<tr><td><code>register.v</code></td><td>Parameterized 16-bit register w/ enable + sync reset</td></tr>
+		<tr><td><code>register_file.v</code></td><td>8 × <code>register</code> + per-register tri-state buffer mux</td></tr>
+		<tr><td><code>alu.v</code></td><td>16-bit ADD/SUB, outputs result + Z/N flags</td></tr>
+		<tr><td><code>controller.v</code></td><td>FSM: decodes opcode, drives all control signals across T0–T2</td></tr>
+		<tr><td><code>cpu_level1.v</code></td><td>Top-level: wires bus, register file, A, ALU, G, Status, controller</td></tr>
+		<tr><td><code>cpu_level1_TB.v</code></td><td>Drives instructions, checks register state — all 7 tests PASS</td></tr>
+	</tbody>
+</table>
+
+<script>
+const SVG = 'http://www.w3.org/2000/svg';
+function el(name, attrs = {}, text) {
+	const e = document.createElementNS(SVG, name);
+	for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+	if (text !== undefined) e.textContent = text;
+	return e;
+}
+
+// ============================================================
+// DATAPATH DIAGRAM
+// ============================================================
+
+const REG_NAMES = ['R0','R1','R2','R3','R4','R5','R6','R7'];
+const REG_X = REG_NAMES.map((_, i) => 80 + i * 90);
+
+const IMM_X = 80 + 8 * 90 + 10;   // x=810
+const A_X   = IMM_X + 100;        // x=910
+const ALU_X = A_X + 90;           // x=1000
+const G_X   = ALU_X + 150;        // x=1150
+const SR_X  = G_X + 90;           // x=1240
+
+const BUS_Y      = 40;
+const TRI_Y      = 95;     // tri-state buffer center
+const REG_Y      = 170;    // register box top
+const REG_H      = 38;
+const CTRL_TOP_Y = 530;    // top of controller bar
+const CTRL_BOT_Y = 580;
+
+function drawDatapath(activeSet) {
+	const svg = document.getElementById('datapath');
+	svg.innerHTML = '';
+
+	// Arrow markers
+	const defs = el('defs');
+	for (const [id, cls] of [['ah', 'arrow-head'], ['ahr', 'arrow-head-active']]) {
+		const m = el('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: 'auto' });
+		m.appendChild(el('path', { d: 'M 0 0 L 10 5 L 0 10 z', class: cls }));
+		defs.appendChild(m);
+	}
+	svg.appendChild(defs);
+
+	// BUS bar
+	svg.appendChild(el('rect', { x: 30, y: BUS_Y - 12, width: 1380, height: 24, rx: 4, class: 'bus-bar' }));
+	const busText = el('text', { x: 720, y: BUS_Y + 5, 'text-anchor': 'middle', class: 'bus-text' });
+	busText.textContent = 'BUS  (16-bit)';
+	svg.appendChild(busText);
+
+	const isActive = (sig) => activeSet.has(sig);
+
+	// 8 register columns
+	REG_NAMES.forEach((name, i) => {
+		const x = REG_X[i];
+		// Register box
+		svg.appendChild(el('rect', { x: x - 24, y: REG_Y, width: 48, height: REG_H, rx: 4, class: 'reg-box' }));
+		const t = el('text', { x: x, y: REG_Y + 24, 'text-anchor': 'middle', class: 'reg-text' });
+		t.textContent = name;
+		svg.appendChild(t);
+
+		// Write line: bus → register (label R*_en)
+		const wrActive = isActive(`reg_en[${i}]`);
+		svg.appendChild(el('path', {
+			d: `M ${x - 14} ${BUS_Y + 12} L ${x - 14} ${REG_Y}`,
+			class: wrActive ? 'wire-active' : 'wire',
+			'marker-end': `url(#${wrActive ? 'ahr' : 'ah'})`
+		}));
+		// Label R*_en
+		const lEn = el('text', { x: x - 32, y: 130, 'text-anchor': 'end', class: 'ctrl-label' + (wrActive ? ' active' : '') });
+		lEn.textContent = `${name}_en`;
+		svg.appendChild(lEn);
+
+		// Tri-state buffer (read): register → bus (label R*_tri)
+		const trActive = isActive(`reg_tri[${i}]`);
+		// Wire from register top to triangle
+		svg.appendChild(el('line', { x1: x + 10, y1: REG_Y, x2: x + 10, y2: TRI_Y + 12, class: trActive ? 'wire-active' : 'wire' }));
+		// Triangle (pointing up)
+		const triClass = 'tri-buf' + (trActive ? ' wire-active' : '');
+		svg.appendChild(el('polygon', {
+			points: `${x},${TRI_Y + 12} ${x + 20},${TRI_Y + 12} ${x + 10},${TRI_Y - 8}`,
+			class: triClass,
+			fill: trActive ? '#fee2e2' : 'white',
+			stroke: trActive ? '#dc2626' : '#1f2937',
+			'stroke-width': trActive ? 2.5 : 1.5
+		}));
+		// Wire from triangle top to bus
+		svg.appendChild(el('line', {
+			x1: x + 10, y1: TRI_Y - 8, x2: x + 10, y2: BUS_Y + 12,
+			class: trActive ? 'wire-active' : 'wire'
+		}));
+		// Tri enable label
+		const lTri = el('text', { x: x + 32, y: TRI_Y + 6, class: 'ctrl-label' + (trActive ? ' active' : '') });
+		lTri.textContent = `${name}_tri`;
+		svg.appendChild(lTri);
+	});
+
+	// IMM column (from instruction)
+	{
+		const x = IMM_X;
+		// Source: a label "instruction[8:0]" feeding from outside
+		svg.appendChild(el('text', { x, y: REG_Y + 60, 'text-anchor': 'middle', class: 'ctrl-label' }, 'from'));
+		svg.appendChild(el('text', { x, y: REG_Y + 75, 'text-anchor': 'middle', class: 'ctrl-label' }, 'IR[8:0]'));
+		svg.appendChild(el('text', { x, y: REG_Y + 90, 'text-anchor': 'middle', class: 'ctrl-label' }, '(sign-ext)'));
+
+		// Box
+		svg.appendChild(el('rect', { x: x - 24, y: REG_Y, width: 48, height: REG_H, rx: 4, class: 'reg-box', fill: '#dbeafe' }));
+		svg.appendChild(el('text', { x, y: REG_Y + 24, 'text-anchor': 'middle', class: 'reg-text' }, 'IMM'));
+
+		// Tri-state to bus
+		const trActive = isActive('imm_tri');
+		svg.appendChild(el('line', { x1: x + 10, y1: REG_Y, x2: x + 10, y2: TRI_Y + 12, class: trActive ? 'wire-active' : 'wire' }));
+		svg.appendChild(el('polygon', {
+			points: `${x},${TRI_Y + 12} ${x + 20},${TRI_Y + 12} ${x + 10},${TRI_Y - 8}`,
+			fill: trActive ? '#fee2e2' : 'white',
+			stroke: trActive ? '#dc2626' : '#1f2937',
+			'stroke-width': trActive ? 2.5 : 1.5
+		}));
+		svg.appendChild(el('line', { x1: x + 10, y1: TRI_Y - 8, x2: x + 10, y2: BUS_Y + 12, class: trActive ? 'wire-active' : 'wire' }));
+		const lTri = el('text', { x: x + 32, y: TRI_Y + 6, class: 'ctrl-label' + (trActive ? ' active' : '') });
+		lTri.textContent = 'imm_tri';
+		svg.appendChild(lTri);
+	}
+
+	// A register (only writes from bus)
+	{
+		const x = A_X;
+		const aActive = isActive('A_en');
+		// Box
+		svg.appendChild(el('rect', { x: x - 24, y: REG_Y, width: 48, height: REG_H, rx: 4, class: 'reg-box' }));
+		svg.appendChild(el('text', { x, y: REG_Y + 24, 'text-anchor': 'middle', class: 'reg-text' }, 'A'));
+		// Write line from bus (NO tri-state — A doesn't drive the bus)
+		svg.appendChild(el('path', {
+			d: `M ${x} ${BUS_Y + 12} L ${x} ${REG_Y}`,
+			class: aActive ? 'wire-active' : 'wire',
+			'marker-end': `url(#${aActive ? 'ahr' : 'ah'})`
+		}));
+		const lEn = el('text', { x: x - 32, y: 130, 'text-anchor': 'end', class: 'ctrl-label' + (aActive ? ' active' : '') });
+		lEn.textContent = 'A_en';
+		svg.appendChild(lEn);
+	}
+
+	// ALU box (combinational, big)
+	{
+		const aluActive = isActive('alu');
+		svg.appendChild(el('rect', {
+			x: ALU_X - 30, y: REG_Y + 50, width: 110, height: 90, rx: 8,
+			class: 'alu-box',
+			fill: aluActive ? '#fed7aa' : '#fef3c7',
+			stroke: aluActive ? '#dc2626' : '#d97706',
+			'stroke-width': aluActive ? 3 : 2.5
+		}));
+		svg.appendChild(el('text', { x: ALU_X + 25, y: REG_Y + 100, 'text-anchor': 'middle', class: 'alu-text' }, 'ALU'));
+
+		// Wire from A reg down to ALU's left input
+		const aActive = isActive('alu');
+		svg.appendChild(el('line', { x1: A_X, y1: REG_Y + REG_H, x2: A_X, y2: REG_Y + 70, class: aActive ? 'wire-active' : 'wire' }));
+		svg.appendChild(el('line', { x1: A_X, y1: REG_Y + 70, x2: ALU_X - 30, y2: REG_Y + 70, class: aActive ? 'wire-active' : 'wire' }));
+
+		// Wire from bus down to ALU's right input
+		// This wire taps off bus and goes through the area between IMM and A. For clarity tap at x=A_X+15
+		const busTapX = ALU_X + 50;
+		svg.appendChild(el('line', { x1: busTapX, y1: BUS_Y + 12, x2: busTapX, y2: REG_Y + 50, class: aActive ? 'wire-active' : 'wire' }));
+		svg.appendChild(el('text', { x: busTapX + 6, y: REG_Y + 25, class: 'ctrl-label' }, 'bus tap'));
+
+		// alu_op control line
+		const opActive = isActive('alu');
+		svg.appendChild(el('text', { x: ALU_X - 40, y: REG_Y + 75, 'text-anchor': 'end', class: 'ctrl-label' + (opActive ? ' active' : '') }, 'alu_op'));
+		svg.appendChild(el('line', {
+			x1: ALU_X - 30, y1: REG_Y + 80, x2: ALU_X - 35, y2: REG_Y + 80,
+			class: opActive ? 'wire-active' : 'wire'
+		}));
+	}
+
+	// G register (latches ALU output, has tri-state to bus)
+	{
+		const x = G_X;
+		const gEnActive = isActive('G_en');
+		const gTriActive = isActive('g_tri');
+
+		// Wire from ALU output to G
+		svg.appendChild(el('line', { x1: ALU_X + 80, y1: REG_Y + 95, x2: x, y2: REG_Y + 95, class: gEnActive ? 'wire-active' : 'wire' }));
+		svg.appendChild(el('line', { x1: x, y1: REG_Y + 95, x2: x, y2: REG_Y + REG_H, class: gEnActive ? 'wire-active' : 'wire' }));
+
+		// G box
+		svg.appendChild(el('rect', { x: x - 24, y: REG_Y, width: 48, height: REG_H, rx: 4, class: 'reg-box' }));
+		svg.appendChild(el('text', { x, y: REG_Y + 24, 'text-anchor': 'middle', class: 'reg-text' }, 'G'));
+
+		// G_en label
+		const lEn = el('text', { x: x - 32, y: REG_Y + 110, 'text-anchor': 'end', class: 'ctrl-label' + (gEnActive ? ' active' : '') });
+		lEn.textContent = 'G_en';
+		svg.appendChild(lEn);
+
+		// Tri-state buffer (G drives bus)
+		svg.appendChild(el('line', { x1: x + 10, y1: REG_Y, x2: x + 10, y2: TRI_Y + 12, class: gTriActive ? 'wire-active' : 'wire' }));
+		svg.appendChild(el('polygon', {
+			points: `${x},${TRI_Y + 12} ${x + 20},${TRI_Y + 12} ${x + 10},${TRI_Y - 8}`,
+			fill: gTriActive ? '#fee2e2' : 'white',
+			stroke: gTriActive ? '#dc2626' : '#1f2937',
+			'stroke-width': gTriActive ? 2.5 : 1.5
+		}));
+		svg.appendChild(el('line', { x1: x + 10, y1: TRI_Y - 8, x2: x + 10, y2: BUS_Y + 12, class: gTriActive ? 'wire-active' : 'wire' }));
+		const lTri = el('text', { x: x + 32, y: TRI_Y + 6, class: 'ctrl-label' + (gTriActive ? ' active' : '') });
+		lTri.textContent = 'g_tri';
+		svg.appendChild(lTri);
+	}
+
+	// SR (Status reg, latches Z/N flags from ALU)
+	{
+		const x = SR_X;
+		const srActive = isActive('status_en');
+
+		// Wire from ALU (right side, flags output)
+		svg.appendChild(el('line', { x1: ALU_X + 80, y1: REG_Y + 130, x2: x, y2: REG_Y + 130, class: srActive ? 'wire-active' : 'wire' }));
+		svg.appendChild(el('line', { x1: x, y1: REG_Y + 130, x2: x, y2: REG_Y + REG_H, class: srActive ? 'wire-active' : 'wire' }));
+		svg.appendChild(el('text', { x: ALU_X + 100, y: REG_Y + 125, class: 'ctrl-label' }, 'Z, N'));
+
+		// SR box
+		svg.appendChild(el('rect', { x: x - 24, y: REG_Y, width: 48, height: REG_H, rx: 4, class: 'reg-box' }));
+		svg.appendChild(el('text', { x, y: REG_Y + 24, 'text-anchor': 'middle', class: 'reg-text' }, 'SR'));
+
+		// status_en label
+		const lEn = el('text', { x: x - 32, y: REG_Y + 145, 'text-anchor': 'end', class: 'ctrl-label' + (srActive ? ' active' : '') });
+		lEn.textContent = 'status_en';
+		svg.appendChild(lEn);
+	}
+
+	// Controller bar at bottom
+	svg.appendChild(el('rect', { x: 30, y: CTRL_TOP_Y, width: 1380, height: 50, rx: 6, class: 'controller-bar' }));
+	svg.appendChild(el('text', { x: 720, y: CTRL_TOP_Y + 32, 'text-anchor': 'middle', class: 'controller-text' }, 'Controller (FSM)   — decodes opcode, sequences T0/T1/T2'));
+
+	// Note about instruction input to controller
+	svg.appendChild(el('text', { x: 30, y: CTRL_TOP_Y + 78, class: 'ctrl-label' }, '← instruction[15:0] from testbench drives both bus IMM source AND opcode/Rd/Rs into controller'));
+
+	// Draw faint control lines from controller bar going up to each control point
+	// (for visual clarity, abstracted as dotted lines coming from controller)
+	const ctrlPoints = [
+		...REG_NAMES.map((_, i) => ({ x: REG_X[i] - 32, y: 130, sig: `reg_en[${i}]` })),
+		...REG_NAMES.map((_, i) => ({ x: REG_X[i] + 32, y: TRI_Y + 6, sig: `reg_tri[${i}]` })),
+		{ x: IMM_X + 32, y: TRI_Y + 6, sig: 'imm_tri' },
+		{ x: A_X - 32, y: 130, sig: 'A_en' },
+		{ x: ALU_X - 40, y: REG_Y + 75, sig: 'alu' },
+		{ x: G_X - 32, y: REG_Y + 110, sig: 'G_en' },
+		{ x: G_X + 32, y: TRI_Y + 6, sig: 'g_tri' },
+		{ x: SR_X - 32, y: REG_Y + 145, sig: 'status_en' },
+	];
+	// We won't draw individual control lines (too messy with 18+ lines).
+	// Instead the labels themselves indicate the control signals.
+	// (Original style mirrored from the user's reference picture.)
+}
+
+let currentScenario = 'idle';
+const SCENARIOS = {
+	'idle':    new Set(),
+	'ldi-t0':  new Set(['imm_tri', 'reg_en[0]']),                       // example: LDI R0, K
+	'mov-t0':  new Set(['reg_tri[1]', 'reg_en[0]']),                    // MOV R0, R1
+	'add-t0':  new Set(['reg_tri[0]', 'A_en']),                         // ADD R0, R1: T0 reads Rd into A
+	'add-t1':  new Set(['reg_tri[1]', 'alu', 'G_en', 'status_en']),     // T1: Rs onto bus, ALU computes, G latches
+	'add-t2':  new Set(['g_tri', 'reg_en[0]']),                         // T2: G onto bus, Rd latches
+};
+
+function setScenario(name) {
+	currentScenario = name;
+	drawDatapath(SCENARIOS[name] || new Set());
+	drawFSM(name);
+	document.querySelectorAll('.instr-btn').forEach(b => {
+		b.classList.toggle('active', b.dataset.op === name);
+	});
+}
+
+document.querySelectorAll('.instr-btn').forEach(btn => {
+	btn.addEventListener('click', () => setScenario(btn.dataset.op));
+});
+
+// ============================================================
+// FSM DIAGRAM
+// ============================================================
+function drawFSM(scenario) {
+	const svg = document.getElementById('fsm');
+	svg.innerHTML = '';
+
+	const defs = el('defs');
+	for (const [id, cls] of [['fah', 'fsm-edge'], ['fahr', 'fsm-edge active']]) {
+		const m = el('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto' });
+		m.appendChild(el('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: cls.includes('active') ? '#dc2626' : '#6b7280' }));
+		defs.appendChild(m);
+	}
+	svg.appendChild(defs);
+
+	const STATE = { T0: { x: 150, y: 130 }, T1: { x: 400, y: 130 }, T2: { x: 650, y: 130 } };
+
+	const activeState = scenario.startsWith('add-t0') || scenario.startsWith('ldi-t0') || scenario.startsWith('mov-t0')
+		? 'T0' : scenario.startsWith('add-t1') ? 'T1' : scenario.startsWith('add-t2') ? 'T2' : null;
+
+	// Edges
+	// T0 → T0 (self-loop for done after LDI/MOV)
+	const selfActive = scenario === 'ldi-t0' || scenario === 'mov-t0';
+	svg.appendChild(el('path', {
+		d: `M ${STATE.T0.x - 25} ${STATE.T0.y - 30} C ${STATE.T0.x - 80} ${STATE.T0.y - 80}, ${STATE.T0.x + 80} ${STATE.T0.y - 80}, ${STATE.T0.x + 25} ${STATE.T0.y - 30}`,
+		class: selfActive ? 'fsm-edge active' : 'fsm-edge',
+		'marker-end': `url(#${selfActive ? 'fahr' : 'fah'})`
+	}));
+	svg.appendChild(el('text', { x: STATE.T0.x, y: STATE.T0.y - 80, 'text-anchor': 'middle', class: 'fsm-edge-text' }, 'done (LDI / MOV)'));
+
+	// T0 → T1
+	const t0t1Active = scenario === 'add-t0';
+	svg.appendChild(el('path', {
+		d: `M ${STATE.T0.x + 40} ${STATE.T0.y} L ${STATE.T1.x - 40} ${STATE.T1.y}`,
+		class: t0t1Active ? 'fsm-edge active' : 'fsm-edge',
+		'marker-end': `url(#${t0t1Active ? 'fahr' : 'fah'})`
+	}));
+	svg.appendChild(el('text', { x: (STATE.T0.x + STATE.T1.x) / 2, y: STATE.T0.y - 10, 'text-anchor': 'middle', class: 'fsm-edge-text' }, 'ADD / SUB'));
+
+	// T1 → T2
+	const t1t2Active = scenario === 'add-t1';
+	svg.appendChild(el('path', {
+		d: `M ${STATE.T1.x + 40} ${STATE.T1.y} L ${STATE.T2.x - 40} ${STATE.T2.y}`,
+		class: t1t2Active ? 'fsm-edge active' : 'fsm-edge',
+		'marker-end': `url(#${t1t2Active ? 'fahr' : 'fah'})`
+	}));
+
+	// T2 → T0 (loop back)
+	const t2t0Active = scenario === 'add-t2';
+	svg.appendChild(el('path', {
+		d: `M ${STATE.T2.x} ${STATE.T2.y + 40}
+		    C ${STATE.T2.x} ${STATE.T2.y + 100},
+		      ${STATE.T0.x} ${STATE.T0.y + 100},
+		      ${STATE.T0.x} ${STATE.T0.y + 40}`,
+		class: t2t0Active ? 'fsm-edge active' : 'fsm-edge',
+		'marker-end': `url(#${t2t0Active ? 'fahr' : 'fah'})`
+	}));
+	svg.appendChild(el('text', { x: (STATE.T0.x + STATE.T2.x) / 2, y: STATE.T0.y + 110, 'text-anchor': 'middle', class: 'fsm-edge-text' }, 'done'));
+
+	// States
+	for (const [name, pos] of Object.entries(STATE)) {
+		svg.appendChild(el('circle', { cx: pos.x, cy: pos.y, r: 40, class: 'fsm-state' + (activeState === name ? ' active' : '') }));
+		svg.appendChild(el('text', { x: pos.x, y: pos.y + 5, 'text-anchor': 'middle', class: 'fsm-text' }, name));
+	}
+
+	// Title labels
+	svg.appendChild(el('text', { x: STATE.T0.x, y: STATE.T0.y + 70, 'text-anchor': 'middle', class: 'fsm-edge-text', 'font-weight': 700 }, 'fetch / first op'));
+	svg.appendChild(el('text', { x: STATE.T1.x, y: STATE.T1.y + 70, 'text-anchor': 'middle', class: 'fsm-edge-text', 'font-weight': 700 }, 'ALU compute'));
+	svg.appendChild(el('text', { x: STATE.T2.x, y: STATE.T2.y + 70, 'text-anchor': 'middle', class: 'fsm-edge-text', 'font-weight': 700 }, 'writeback'));
+}
+
+setScenario('idle');
+</script>
+
+</body>
+</html>

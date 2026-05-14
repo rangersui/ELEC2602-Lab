@@ -70,12 +70,8 @@
 		align-items: center;
 		gap: 10px;
 	}
-	.slider-group label {
-		font-weight: 500;
-	}
-	.slider-group input[type="range"] {
-		width: 180px;
-	}
+	.slider-group label { font-weight: 500; }
+	.slider-group input[type="range"] { width: 220px; }
 	.status {
 		display: flex;
 		gap: 22px;
@@ -124,8 +120,8 @@
 	}
 	.node-text {
 		font-family: ui-monospace, "SF Mono", Consolas, monospace;
-		font-size: 12px;
-		font-weight: 600;
+		font-size: 14px;
+		font-weight: 700;
 		pointer-events: none;
 		fill: #333;
 	}
@@ -136,6 +132,8 @@
 		font-weight: 700;
 		fill: #555;
 	}
+	.chain-label.ones  { fill: #b91c1c; }
+	.chain-label.zeros { fill: #1d4ed8; }
 
 	.edge-bg {
 		fill: none;
@@ -154,9 +152,6 @@
 		stroke: #dc2626;
 		stroke-width: 3;
 		marker-end: url(#arrow-red);
-	}
-	.edge-bg.dashed {
-		stroke-dasharray: 4 3;
 	}
 	.edge-label {
 		font-family: ui-monospace, monospace;
@@ -208,6 +203,7 @@
 		border-top: 1px solid #ddd;
 		font-size: 13px;
 		color: #666;
+		line-height: 1.6;
 	}
 </style>
 </head>
@@ -216,12 +212,9 @@
 <h1>Lab 5 Part 3 — Streak Detector FSM</h1>
 
 <div class="info">
-	<strong>State</strong> = <code>{type, count}</code> — the current streak's bit value and how long it's been (saturating at 15).<br>
-	<strong>Update</strong>:
-	<code>w == type</code> → count++ (cap at 15);
-	<code>w != type</code> → count=1, type=w.<br>
-	<strong>Output</strong>: <code>z = (n!=0) && (count&gt;=n) && (type==mode)</code>.<br>
-	<em>31 states total: one INIT + 15 in the 1-chain + 15 in the 0-chain. Adjust mode/N below to see which states would fire z (green). Press 0 / 1 to feed an input bit.</em>
+	<strong>Behavior</strong>: counts consecutive identical bits. When the streak reaches the saved threshold <code>N</code> (regardless of whether the bits are 0s or 1s), the output <code>z</code> goes high. If the input flips before reaching <code>N</code>, the count resets to 1.<br>
+	<strong>Internal state</strong>: <code>count</code> (0–15) plus an internal <code>last_w</code> bit (used only to detect when the streak breaks — not exposed in the output).<br>
+	<em>Pick <code>N</code> below — every state where <code>count ≥ N</code> turns green (those fire <code>z</code>). Press 0 / 1 to feed bits.</em>
 </div>
 
 <div class="controls">
@@ -233,16 +226,10 @@
 
 <div class="saved-controls">
 	<div class="slider-group">
-		<label>mode:</label>
-		<select id="mode-select" onchange="updateSaved()">
-			<option value="0">0 — look for streaks of 0s</option>
-			<option value="1" selected>1 — look for streaks of 1s</option>
-		</select>
-	</div>
-	<div class="slider-group">
-		<label>N:</label>
-		<input type="range" id="n-slider" min="0" max="15" value="3" oninput="updateSaved()">
-		<strong id="n-display">3</strong>
+		<label>Threshold N:</label>
+		<input type="range" id="n-slider" min="0" max="15" value="5" oninput="updateSaved()">
+		<strong id="n-display">5</strong>
+		<span style="color:#888; font-size:13px; margin-left:8px;">(N=0 disables z)</span>
 	</div>
 	<div class="status">
 		<span>Current state: <strong id="current-state">INIT</strong></span>
@@ -254,7 +241,7 @@
 	<div class="legend-item"><span class="swatch-line" style="background:#2563eb"></span>w=0 (active edge from current state)</div>
 	<div class="legend-item"><span class="swatch-line" style="background:#dc2626"></span>w=1 (active edge from current state)</div>
 	<div class="legend-item"><span class="swatch-line" style="background:#e5e5e5"></span>Other transitions (faded)</div>
-	<div class="legend-item"><span class="swatch-circle" style="background:#d1fae5; border:2px solid #059669;"></span>Would fire z (count≥N, type=mode)</div>
+	<div class="legend-item"><span class="swatch-circle" style="background:#d1fae5; border:2px solid #059669;"></span>Fires z (count ≥ N)</div>
 	<div class="legend-item"><span class="swatch-circle" style="background:white; border:4px solid #f59e0b;"></span>Current state</div>
 	<div class="legend-item"><span class="swatch-circle" style="background:#fef3c7; border:2px solid #d97706;"></span>INIT (after reset)</div>
 </div>
@@ -268,45 +255,49 @@
 </div>
 
 <footer>
-	<p>Each chain has the same shape: from <code>(k, type)</code>, feeding the same bit advances to <code>(k+1, type)</code> (or self-loops at <code>k=15</code>); feeding the other bit jumps to position 1 of the other chain. The INIT state (count=0) only ever appears after reset — once you feed any bit you leave it for good.</p>
-	<p>The lab's <code>z</code> output highlights only states where the count reaches your threshold and the streak's type matches the saved mode. Drag the N slider and flip the mode dropdown to see which states light up green for your current settings.</p>
+	<p>The FSM is laid out as two chains (one per streak value) plus a single INIT state. Both chains are identical in shape:</p>
+	<ul>
+		<li><strong>Top chain (red label)</strong>: streaks of <strong>1</strong>s. Feeding another 1 advances right; feeding 0 jumps back to position 1 of the bottom chain.</li>
+		<li><strong>Bottom chain (blue label)</strong>: streaks of <strong>0</strong>s. Feeding another 0 advances right; feeding 1 jumps back to position 1 of the top chain.</li>
+		<li><strong>INIT</strong>: only ever entered after reset. The very first bit you feed sends you to position 1 of whichever chain matches that bit.</li>
+	</ul>
+	<p>The label inside each node is the streak's <code>count</code> — that's <em>all</em> the user sees. The chain a node belongs to encodes which bit is being counted, but that's purely internal plumbing for deciding when the streak breaks.</p>
 </footer>
 
 <script>
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const NODE_R = 26;
-const COL0_X = 50;     // INIT column
-const COL1_X = 130;    // (count=1) column
+const COL0_X = 50;
+const COL1_X = 130;
 const COL_STEP = 80;
-const ROW_TOP_Y = 100; // 1-chain
-const ROW_MID_Y = 260; // INIT
-const ROW_BOT_Y = 420; // 0-chain
+const ROW_TOP_Y = 100;
+const ROW_MID_Y = 260;
+const ROW_BOT_Y = 420;
 
-let currentState = { count: 0, type: 0 }; // count=0 means INIT
-let savedMode = 1;
-let savedN = 3;
+// Internally we still track {count, last_w}: last_w determines which chain.
+// 'last_w' here corresponds to lab5_p3.v's `last_w` register — it's the bit
+// the FSM has been counting, used only to know when the streak breaks.
+let currentState = { count: 0, last_w: 0 };
+let savedN = 5;
 let history = [];
 
 function nodePos(state) {
 	if (state.count === 0) return { x: COL0_X, y: ROW_MID_Y };
 	const x = COL1_X + (state.count - 1) * COL_STEP;
-	const y = state.type === 1 ? ROW_TOP_Y : ROW_BOT_Y;
+	const y = state.last_w === 1 ? ROW_TOP_Y : ROW_BOT_Y;
 	return { x, y };
 }
 
 function isFireState(state) {
-	return savedN > 0 && state.count >= savedN && state.type === savedMode;
+	// Just count >= N — no mode/type filter anymore. Any state on either
+	// chain whose count meets or exceeds N fires z.
+	return savedN > 0 && state.count >= savedN;
 }
 
 function nextState(state, w) {
-	if (state.count === 0) {
-		return { count: 1, type: w };
-	}
-	if (w === state.type) {
-		// extend, saturate at 15
-		return { count: Math.min(state.count + 1, 15), type: state.type };
-	}
-	return { count: 1, type: w };
+	if (state.count === 0) return { count: 1, last_w: w };
+	if (w === state.last_w) return { count: Math.min(state.count + 1, 15), last_w: state.last_w };
+	return { count: 1, last_w: w };
 }
 
 function makeEl(name, attrs = {}) {
@@ -315,26 +306,22 @@ function makeEl(name, attrs = {}) {
 	return el;
 }
 
-function stateKey(state) { return `${state.count}-${state.type}`; }
-
 function drawArrowMarkers(svg) {
 	const defs = makeEl('defs');
-	for (const [id, color] of [['arrow-blue', '#2563eb'], ['arrow-red', '#dc2626'], ['arrow-gray', '#cccccc']]) {
+	for (const [id, color] of [['arrow-blue', '#2563eb'], ['arrow-red', '#dc2626']]) {
 		const marker = makeEl('marker', {
 			id, viewBox: '0 0 10 10', refX: 9, refY: 5,
 			markerWidth: 7, markerHeight: 7, orient: 'auto'
 		});
-		marker.appendChild(makeEl('path', {
-			d: 'M 0 0 L 10 5 L 0 10 z', fill: color
-		}));
+		marker.appendChild(makeEl('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: color }));
 		defs.appendChild(marker);
 	}
 	svg.appendChild(defs);
 }
 
-function drawChainLabel(svg, text, x, y) {
+function drawChainLabel(svg, text, x, y, cls) {
 	const t = makeEl('text', {
-		x, y, 'text-anchor': 'middle', class: 'chain-label'
+		x, y, 'text-anchor': 'middle', class: 'chain-label ' + cls
 	});
 	t.textContent = text;
 	svg.appendChild(t);
@@ -403,12 +390,17 @@ function drawEdge(svg, from, to, cls, label, curveSign = 1) {
 }
 
 function getAllStates() {
-	const list = [{ count: 0, type: 0 }]; // INIT
+	const list = [{ count: 0, last_w: 0 }];
 	for (let c = 1; c <= 15; c++) {
-		list.push({ count: c, type: 0 });
-		list.push({ count: c, type: 1 });
+		list.push({ count: c, last_w: 0 });
+		list.push({ count: c, last_w: 1 });
 	}
 	return list;
+}
+
+function isCurrent(s) {
+	return s.count === currentState.count &&
+	       (s.count === 0 || s.last_w === currentState.last_w);
 }
 
 function render() {
@@ -416,22 +408,19 @@ function render() {
 	svg.innerHTML = '';
 	drawArrowMarkers(svg);
 
-	// Chain labels
-	drawChainLabel(svg, '1-chain (type = 1)', 700, 30);
-	drawChainLabel(svg, '0-chain (type = 0)', 700, 510);
+	drawChainLabel(svg, 'Streak of 1s — top chain', 700, 30, 'ones');
+	drawChainLabel(svg, 'Streak of 0s — bottom chain', 700, 510, 'zeros');
 
-	// Background edges (all transitions, faded)
 	const states = getAllStates();
-	const isCurrent = (s) => s.count === currentState.count && s.type === currentState.type;
 
+	// Background edges (faded)
 	for (const s of states) {
-		if (isCurrent(s)) continue; // current state's edges drawn last (highlighted)
+		if (isCurrent(s)) continue;
 		const fromPos = nodePos(s);
 		for (const w of [0, 1]) {
 			const ns = nextState(s, w);
 			const toPos = nodePos(ns);
-			if (s.count !== 0 && ns.count === s.count && ns.type === s.type) {
-				// self-loop at saturation
+			if (s.count !== 0 && ns.count === s.count && ns.last_w === s.last_w) {
 				drawSelfLoop(svg, fromPos, 'edge-bg', null);
 			} else {
 				const sameRow = fromPos.y === toPos.y;
@@ -447,7 +436,7 @@ function render() {
 			const ns = nextState(currentState, w);
 			const cls = w === 0 ? 'edge-active-0' : 'edge-active-1';
 			const toPos = nodePos(ns);
-			if (currentState.count !== 0 && ns.count === currentState.count && ns.type === currentState.type) {
+			if (currentState.count !== 0 && ns.count === currentState.count && ns.last_w === currentState.last_w) {
 				drawSelfLoop(svg, fromPos, cls, `w=${w}`);
 			} else {
 				const sameRow = fromPos.y === toPos.y;
@@ -473,11 +462,7 @@ function render() {
 			'text-anchor': 'middle', dy: 5,
 			class: 'node-text' + (isFireState(s) ? ' fires' : '')
 		});
-		if (s.count === 0) {
-			text.textContent = 'INIT';
-		} else {
-			text.textContent = `${s.count},t${s.type}`;
-		}
+		text.textContent = s.count === 0 ? 'INIT' : String(s.count);
 		g.appendChild(text);
 		svg.appendChild(g);
 	}
@@ -495,14 +480,13 @@ function randomBits(n) {
 }
 
 function resetState() {
-	currentState = { count: 0, type: 0 };
+	currentState = { count: 0, last_w: 0 };
 	history = [];
 	render();
 	updateStatus();
 }
 
 function updateSaved() {
-	savedMode = parseInt(document.getElementById('mode-select').value);
 	savedN = parseInt(document.getElementById('n-slider').value);
 	document.getElementById('n-display').textContent = savedN;
 	render();
@@ -514,7 +498,8 @@ function updateStatus() {
 	if (currentState.count === 0) {
 		csEl.textContent = 'INIT';
 	} else {
-		csEl.textContent = `count=${currentState.count}, type=${currentState.type}`;
+		const which = currentState.last_w === 1 ? '(streak of 1s)' : '(streak of 0s)';
+		csEl.textContent = `count=${currentState.count} ${which}`;
 	}
 	const z = isFireState(currentState) ? 1 : 0;
 	const zEl = document.getElementById('z-out');
@@ -533,7 +518,6 @@ document.addEventListener('keydown', (e) => {
 
 render();
 updateStatus();
-updateSaved();
 </script>
 
 </body>
